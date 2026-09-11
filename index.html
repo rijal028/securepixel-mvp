@@ -5,56 +5,67 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SecurePixel - Forensic Pre-Filter</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 650px; margin: 50px auto; padding: 20px; background: #0b0f19; color: #f1f5f9; }
-        .card { background: #161f30; padding: 30px; border-radius: 16px; border: 1px solid #23304a; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        * { box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; max-width: 650px; margin: 50px auto; padding: 20px; background: #0f172a; color: #f8fafc; }
+        .card { background: #1e293b; padding: 30px; border-radius: 16px; border: 1px solid #334155; box-shadow: 0 10px 25px rgba(0,0,0,0.4); }
         h1 { margin-top: 0; font-size: 22px; color: #38bdf8; }
         p.subtitle { color: #94a3b8; font-size: 14px; margin-bottom: 25px; line-height: 1.5; }
-        input[type="file"] { display: block; width: 100%; margin-bottom: 15px; color: #94a3b8; }
-        button { background: #d1e1e9; color: rgb(252, 8, 8); border: none; padding: 12px 20px; font-weight: 600; border-radius: 8px; cursor: pointer; width: 100%; font-size: 15px; transition: background 0.2s; }
+        .upload-box { border: 2px dashed #475569; padding: 25px; border-radius: 12px; text-align: center; cursor: pointer; background: #0f172a; margin-bottom: 20px; }
+        input[type="file"] { display: none; }
+        button { background: #0284c7; color: white; border: none; padding: 12px 20px; font-weight: 600; border-radius: 8px; cursor: pointer; width: 100%; font-size: 15px; }
         button:hover { background: #0369a1; }
-        #resultCard { display: none; margin-top: 25px; padding-top: 20px; border-top: 1px solid #23304a; }
+        button:disabled { background: #475569; cursor: not-allowed; }
+        #resultCard { display: none; margin-top: 25px; padding-top: 20px; border-top: 1px solid #334155; }
         .badge { display: inline-block; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; }
         .badge-verified { background: #065f46; color: #34d399; }
         .badge-inconclusive { background: #7f1d1d; color: #fca5a5; }
         .badge-proceed { background: #1e3a8a; color: #60a5fa; }
-        pre { background: #0a0e17; color: #a5f3fc; padding: 15px; border-radius: 8px; font-size: 12px; overflow-x: auto; border: 1px solid #1e293b; }
+        pre { background: #0b0f19; color: #a5f3fc; padding: 15px; border-radius: 8px; font-size: 12px; overflow-x: auto; border: 1px solid #1e293b; }
     </style>
 </head>
 <body>
 
 <div class="card">
     <h1>🛡️ SecurePixel Pre-Filter</h1>
-    <p class="subtitle">Single-Instance Degradation Profiler & Provenance Verification Engine.</p>
+    <p class="subtitle">Tahap 1 & 2: Pemeriksaan Manifes C2PA & Profiler Degradasi (CPU-Only Pre-filter).</p>
 
-    <form id="uploadForm">
-        <input type="file" id="fileInput" accept="image/*" required>
-        <button type="submit" id="btnSubmit">Uji Berkas</button>
-    </form>
+    <div class="upload-box" onclick="document.getElementById('fileInput').click()">
+        <span id="uploadLabel">📁 Klik di sini untuk memilih gambar</span>
+        <input type="file" id="fileInput" accept="image/*" onchange="handleFileSelected(event)">
+    </div>
+
+    <button type="button" id="btnSubmit" onclick="submitAnalysis()" disabled>Analisis Berkas</button>
 
     <div id="resultCard">
         <p><strong>Verdict:</strong> <span id="resVerdict" class="badge"></span></p>
         <p><strong>Keterangan:</strong> <span id="resReason" style="color: #cbd5e1;"></span></p>
         <p><strong>Status GPU:</strong> <span id="resGPU" style="font-weight: 600;"></span></p>
-        <p style="margin-top: 15px; font-size: 13px; color: #94a3b8;">Metadata & Degradation Metrics:</p>
+        <p style="margin-top: 15px; font-size: 13px; color: #94a3b8;">Metrik Fisik Citra:</p>
         <pre id="resMetrics"></pre>
     </div>
 </div>
 
 <script>
-    const form = document.getElementById('uploadForm');
-    const resultCard = document.getElementById('resultCard');
-    const btnSubmit = document.getElementById('btnSubmit');
+    let selectedFile = null;
 
-    form.onsubmit = async (e) => {
-        e.preventDefault();
-        const fileInput = document.getElementById('fileInput');
-        if (!fileInput.files[0]) return;
+    function handleFileSelected(e) {
+        if (e.target.files.length > 0) {
+            selectedFile = e.target.files[0];
+            document.getElementById('uploadLabel').innerText = "✅ " + selectedFile.name;
+            document.getElementById('btnSubmit').disabled = false;
+        }
+    }
 
-        btnSubmit.innerText = "Memeriksa...";
-        btnSubmit.disabled = true;
+    async function submitAnalysis() {
+        if (!selectedFile) return;
+
+        const btn = document.getElementById('btnSubmit');
+        const resultCard = document.getElementById('resultCard');
+        btn.innerText = "Memproses berkas...";
+        btn.disabled = true;
 
         const formData = new FormData();
-        formData.append("file", fileInput.files[0]);
+        formData.append("file", selectedFile);
 
         try {
             const res = await fetch("/api/analyze", { method: "POST", body: formData });
@@ -73,15 +84,15 @@
             }
 
             document.getElementById('resReason').innerText = data.reason;
-            document.getElementById('resGPU').innerText = data.send_to_gpu ? "⚡ Ya (Lolos ke GPU/Kaggle)" : "🛡️ Tidak (Hemat Komputasi)";
-            document.getElementById('resMetrics').innerText = JSON.stringify(data.metrics || {}, null, 2);
+            document.getElementById('resGPU').innerText = data.send_to_gpu ? "⚡ Ya (Memenuhi syarat untuk diteruskan ke GPU)" : "🛡️ Tidak (Hemat daya komputasi)";
+            document.getElementById('resMetrics').innerText = JSON.stringify(data.metrics || data.c2pa_info || {}, null, 2);
         } catch (err) {
-            alert("Eror saat menghubungi API: " + err);
+            alert("Eror memeriksa berkas: " + err);
         } finally {
-            btnSubmit.innerText = "Uji Berkas";
-            btnSubmit.disabled = false;
+            btn.innerText = "Analisis Berkas";
+            btn.disabled = false;
         }
-    };
+    }
 </script>
 
 </body>
