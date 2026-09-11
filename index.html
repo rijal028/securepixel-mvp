@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SecurePixel - Forensic Pipeline</title>
+    <title>SecurePixel - Multi-Stage Forensic Pipeline</title>
     <style>
         * { box-sizing: border-box; }
         body { 
@@ -89,25 +89,25 @@
 
 <div class="card">
     <h1>🛡️ SecurePixel Multi-Stage Pipeline</h1>
-    <p class="subtitle">Tahap 1 & 2 di Vercel (Pre-filter), Tahap 3–5 di Kaggle Engine (Forensic Channels).</p>
+    <p class="subtitle">Stages 1 & 2 on Vercel (Edge Pre-filter), Stages 3–5 on Kaggle Engine (Dual Forensic Channels).</p>
 
     <div class="config-box">
-        <label for="kaggleUrl">Kaggle URL (LocalTunnel / ngrok):</label>
+        <label for="kaggleUrl">Kaggle Endpoint URL (LocalTunnel / ngrok):</label>
         <input type="text" id="kaggleUrl" placeholder="https://xxxx-xxxx.loca.lt">
     </div>
 
     <div class="upload-box" onclick="document.getElementById('fileInput').click()">
-        <span id="uploadLabel">📁 Klik untuk memilih berkas gambar</span>
+        <span id="uploadLabel">📁 Click to select an image file</span>
         <input type="file" id="fileInput" accept="image/*" onchange="handleFileSelected(event)">
     </div>
 
-    <button type="button" id="btnSubmit" onclick="runPipeline()" disabled>Mulai Verifikasi</button>
+    <button type="button" id="btnSubmit" onclick="runPipeline()" disabled>Start Verification</button>
 
     <div id="resultCard">
-        <p><strong>Hasil Akhir:</strong> <span id="resVerdict" class="badge"></span></p>
-        <p><strong>Alasan / Keterangan:</strong> <span id="resReason" style="color: #cbd5e1;"></span></p>
-        <p><strong>Jalur Eksekusi:</strong> <span id="resPipeline" style="color: #38bdf8;"></span></p>
-        <p style="margin-top: 15px; font-size: 13px; color: #94a3b8;">Rincian Data Forensik:</p>
+        <p><strong>Final Verdict:</strong> <span id="resVerdict" class="badge"></span></p>
+        <p><strong>Forensic Rationale:</strong> <span id="resReason" style="color: #cbd5e1;"></span></p>
+        <p><strong>Execution Route:</strong> <span id="resPipeline" style="color: #38bdf8;"></span></p>
+        <p style="margin-top: 15px; font-size: 13px; color: #94a3b8;">Detailed Forensic Metrics:</p>
         <pre id="resData"></pre>
     </div>
 </div>
@@ -128,7 +128,7 @@
         if (!selectedFile) return;
 
         if (selectedFile.size > 4.2 * 1024 * 1024) {
-            alert("Ukuran berkas melebihi batas 4,2 MB. Gunakan berkas yang lebih kecil untuk pengujian.");
+            alert("File size exceeds the 4.2 MB payload limit. Please select a smaller image for testing.");
             return;
         }
 
@@ -137,14 +137,14 @@
         const verdictEl = document.getElementById('resVerdict');
         const kaggleEndpoint = document.getElementById('kaggleUrl').value.trim();
 
-        btn.innerText = "Tahap 1 & 2: Memeriksa integritas berkas...";
+        btn.innerText = "Stages 1 & 2: Inspecting C2PA provenance & physical integrity...";
         btn.disabled = true;
 
         const formData = new FormData();
         formData.append("file", selectedFile);
 
         try {
-            // 1. Eksekusi Tahap 1 & 2 di Vercel
+            // 1. Execute Stages 1 & 2 on Vercel Pre-filter
             const resVercel = await fetch("/api/analyze", { method: "POST", body: formData });
             if (!resVercel.ok) {
                 const errText = await resVercel.text();
@@ -154,21 +154,21 @@
             const dataVercel = await resVercel.json();
             resultCard.style.display = "block";
 
-            // Jika berkas diverifikasi C2PA atau ditolak degradasi di Tahap 2
+            // If verified via C2PA or stopped by degradation profiler
             if (!dataVercel.send_to_gpu || !kaggleEndpoint) {
                 verdictEl.innerText = dataVercel.verdict;
                 verdictEl.className = dataVercel.verdict === "VERIFIED ORIGIN" ? "badge badge-verified" : "badge badge-inconclusive";
                 document.getElementById('resReason').innerText = dataVercel.reason;
                 document.getElementById('resPipeline').innerText = dataVercel.send_to_gpu 
-                    ? "Selesai di Vercel (URL Kaggle kosong, inferensi lanjutan dilewati)" 
-                    : "Selesai di Vercel (Pra-saring mandiri)";
+                    ? "Terminated at Vercel (Kaggle URL omitted, deep inference bypassed)" 
+                    : "Terminated at Vercel (Autonomous Edge Pre-Filter)";
                 document.getElementById('resData').innerText = JSON.stringify(dataVercel, null, 2);
                 return;
             }
 
-            // 2. Berkas lolos pra-saring -> Diteruskan ke Kaggle Engine
-            btn.innerText = "Tahap 3–5: Menganalisis kanal visual & spektrum di Kaggle...";
-            document.getElementById('resPipeline').innerText = "Diteruskan ke Backend Kaggle...";
+            // 2. File passed pre-filter -> Route to Kaggle Deep Inference Engine
+            btn.innerText = "Stages 3–5: Executing neural visual & phase spectral inference on Kaggle...";
+            document.getElementById('resPipeline').innerText = "Routing payload to Kaggle Forensic Backend...";
 
             const cleanUrl = kaggleEndpoint.replace(/\/+$/, "");
             const targetUrl = `${cleanUrl}/predict`;
@@ -180,7 +180,7 @@
 
             if (!resKaggle.ok) {
                 const errDetail = await resKaggle.text();
-                throw new Error(`Kaggle server error (${resKaggle.status}): ${errDetail.substring(0, 120)}`);
+                throw new Error(`Kaggle engine error (${resKaggle.status}): ${errDetail.substring(0, 120)}`);
             }
 
             const dataKaggle = await resKaggle.json();
@@ -195,13 +195,13 @@
             }
 
             document.getElementById('resReason').innerText = dataKaggle.reason;
-            document.getElementById('resPipeline').innerText = "Selesai penuh (Vercel Pre-Filter -> Kaggle Forensic Engine)";
+            document.getElementById('resPipeline').innerText = "Full Pipeline Complete (Vercel Pre-Filter -> Kaggle Forensic Engine)";
             document.getElementById('resData').innerText = JSON.stringify(dataKaggle, null, 2);
 
         } catch (err) {
-            alert("Kendala sistem: " + err.message);
+            alert("System exception: " + err.message);
         } finally {
-            btn.innerText = "Mulai Verifikasi";
+            btn.innerText = "Start Verification";
             btn.disabled = false;
         }
     }
