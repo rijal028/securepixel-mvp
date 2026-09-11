@@ -51,13 +51,20 @@
     function handleFileSelected(e) {
         if (e.target.files.length > 0) {
             selectedFile = e.target.files[0];
-            document.getElementById('uploadLabel').innerText = "✅ " + selectedFile.name;
+            const sizeMB = (selectedFile.size / (1024 * 1024)).toFixed(2);
+            document.getElementById('uploadLabel').innerText = `✅ ${selectedFile.name} (${sizeMB} MB)`;
             document.getElementById('btnSubmit').disabled = false;
         }
     }
 
     async function submitAnalysis() {
         if (!selectedFile) return;
+
+        // Cegah pengunggahan file di atas batas 4.5 MB Vercel
+        if (selectedFile.size > 4.2 * 1024 * 1024) {
+            alert(`Ukuran berkas (${(selectedFile.size / (1024*1024)).toFixed(2)} MB) melebihi batas fungsi serverless Vercel (4.2 MB). Silakan gunakan berkas di bawah 4 MB untuk uji coba MVP.`);
+            return;
+        }
 
         const btn = document.getElementById('btnSubmit');
         const resultCard = document.getElementById('resultCard');
@@ -69,6 +76,12 @@
 
         try {
             const res = await fetch("/api/analyze", { method: "POST", body: formData });
+            
+            if (!res.ok) {
+                const errText = await res.text();
+                throw new Error(`Server status ${res.status}: ${errText}`);
+            }
+
             const data = await res.json();
 
             resultCard.style.display = "block";
@@ -87,7 +100,7 @@
             document.getElementById('resGPU').innerText = data.send_to_gpu ? "⚡ Ya (Memenuhi syarat untuk diteruskan ke GPU)" : "🛡️ Tidak (Hemat daya komputasi)";
             document.getElementById('resMetrics').innerText = JSON.stringify(data.metrics || data.c2pa_info || {}, null, 2);
         } catch (err) {
-            alert("Eror memeriksa berkas: " + err);
+            alert("Eror memeriksa berkas: " + err.message);
         } finally {
             btn.innerText = "Analisis Berkas";
             btn.disabled = false;

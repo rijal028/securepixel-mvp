@@ -3,13 +3,8 @@ import json
 import numpy as np
 from PIL import Image
 from http.server import BaseHTTPRequestHandler
-import cgi
 
 def inspect_c2pa(raw_bytes: bytes) -> dict:
-    """
-    Tahap 1: Memeriksa keberadaan dan integritas blok JUMBF C2PA.
-    Standar: ISO/IEC 19566-5 (JUMBF) dengan URN c2pa.
-    """
     has_c2pa = False
     manifest_type = "None"
     
@@ -30,15 +25,11 @@ def inspect_c2pa(raw_bytes: bytes) -> dict:
     }
 
 def profile_degradation(img_pil: Image.Image) -> dict:
-    """
-    Tahap 2: Degradation Profiler murni CPU (Pillow + NumPy).
-    Mengukur resolusi, ketajaman tepi, dan kompresi JPEG.
-    """
     width, height = img_pil.size
     total_pixels = width * height
-    is_downscaled = total_pixels < (720 * 1280)
+    is_downscaled = bool(total_pixels < (720 * 1280))
 
-    # 1. Hitung Ketajaman Gambar (Laplacian Variance via NumPy murni)
+    # 1. Hitung Ketajaman Gambar (Laplacian Variance via NumPy)
     gray = img_pil.convert("L")
     arr = np.array(gray, dtype=np.float32)
     edges = (
@@ -72,18 +63,35 @@ def profile_degradation(img_pil: Image.Image) -> dict:
 class handler(BaseHTTPRequestHandler):
     def do_POST(self):
         try:
-            ctype, pdict = cgi.parse_header(self.headers.get('content-type'))
-            if ctype != 'multipart/form-data':
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length)
+
+            content_type = self.headers.get('Content-Type', '')
+            if 'boundary=' not in content_type:
                 self.send_response(400)
                 self.end_headers()
-                self.wfile.write(b'Content-Type must be multipart/form-data')
+                self.wfile.write(json.dumps({"error": "Bad Request: Missing boundary"}).encode())
                 return
 
-            pdict['boundary'] = bytes(pdict['boundary'], "utf-8")
-            fields = cgi.parse_multipart(self.rfile, pdict)
-            file_bytes = fields.get('file')[0]
+            boundary = content_type.split('boundary=')[1].encode()
+            parts = body.split(b'--' + boundary)
 
-            # 1. Tahap 1: C2PA
+            file_bytes = None
+            for part in parts:
+                if b'filename=' in part:
+                    header_end = part.find(b'\r\n\r\n')
+                    if header_end != -1:
+                        # Ambil konten biner murni berkas (hapus trailing \r\n)
+                        file_bytes = part[header_end + 4:].rstrip(b'\r\n')
+                        break
+
+            if not file_bytes:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "No file uploaded"}).encode())
+                return
+
+            # Tahap 1: Evaluasi C2PA
             c2pa_res = inspect_c2pa(file_bytes)
             if c2pa_res["has_c2pa"]:
                 response_data = {
@@ -94,7 +102,7 @@ class handler(BaseHTTPRequestHandler):
                     "send_to_gpu": False
                 }
             else:
-                # 2. Tahap 2: Profiler
+                # Tahap 2: Evaluasi Degradasi
                 img = Image.open(io.BytesIO(file_bytes))
                 profile = profile_degradation(img)
 
@@ -116,13 +124,13 @@ class handler(BaseHTTPRequestHandler):
                     }
 
             self.send_response(200)
-            self.send_header('Content-type', 'application/json')
+            self.send_header('Content-Type', 'application/json')
             self.send_header('Access-Control-Allow-Origin', '*')
             self.end_headers()
             self.wfile.write(json.dumps(response_data).encode('utf-8'))
 
         except Exception as e:
             self.send_response(500)
-            self.send_header('Content-type', 'application/json')
+            self.send_header('Content-Type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
